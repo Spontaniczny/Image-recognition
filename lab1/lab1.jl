@@ -38,13 +38,13 @@ function custom_conv(img, step, func)
     return polled_img 
 end
 
-function max_pooling(img)
+function max_pooling(img, n=4)
     custom_max = x -> max(x...)
-    return custom_conv(img, 4, custom_max)
+    return custom_conv(img, n, custom_max)
 end
 
-function avg_pooling(img)
-    return custom_conv(img, 4, mean)
+function avg_pooling(img, n=4)
+    return custom_conv(img, n, mean)
 end
 
 ap = avg_pooling(grey_img)
@@ -64,16 +64,16 @@ imshow(img_gaus)
 
 # 5
 
-hor_sobel = [[1, 2, 1] [0, 0, 0] [-1, -2, -1]]
-ver_sobel = [[1, 0, -1] [2, 0, -2] [1, 0, -1]]
+ver_sobel = [[1, 2, 1] [0, 0, 0] [-1, -2, -1]]
+hor_sobel = [[1, 0, -1] [2, 0, -2] [1, 0, -1]]
 
 function conv_with_matrix(img, mat)
     return imfilter(img, mat)
 end
 
 
-img_sobel_hor = conv_with_matrix(img_gaus, hor_sobel)
 img_sobel_ver = conv_with_matrix(img_gaus, ver_sobel)
+img_sobel_hor = conv_with_matrix(img_gaus, hor_sobel)
 
 imshow(img_sobel_hor, name="Horizontal")
 imshow(img_sobel_ver, name="Vertical")
@@ -86,7 +86,8 @@ function merge_sobels!(img1, img2)
 end
 
 img_sobel = merge_sobels!(copy(img_sobel_hor), copy(img_sobel_ver))
-img_angle = atand.(img_sobel_ver, img_sobel_hor)
+img_angle = atand.(img_sobel_hor, img_sobel_ver)
+img_angle .*= -1
 
 imshow(img_sobel)
 
@@ -160,35 +161,79 @@ end
 img_final = add_images_with_green(org_img, img_resized)
 imshow(img_final)
 
-function find_edges!(img)
+function find_edges!(img, debug=false)
     org_img = copy(img)
     img = to_grey(img)
-    imshow(img, name="grey")
-    img = avg_pooling(img)
-    # imshow(img, name="avg pooling")
-    img = gaussian_blur(img, 2, 3)
-    imshow(img)
+    if debug imshow(img, name="grey") end
+
+    img = avg_pooling(img, 2)
+    imshow(img, name="avg pooling")
+
+    img = gaussian_blur(img, 1.4, 7)
+    if debug imshow(img, name="gaussian_blur") end
 
     img_sobel_hor = conv_with_matrix(img, hor_sobel)
     img_sobel_ver = conv_with_matrix(img, ver_sobel)
-
+ 
     img_sobel = merge_sobels!(copy(img_sobel_hor), copy(img_sobel_ver))
-    imshow(img_sobel, name="full sobel")
-    # img_angle = atand.(img_sobel_hor, img_sobel_ver)
-    img_angle = atand.(img_sobel_ver, img_sobel_hor)
-
+    if debug imshow(img_sobel, name="full sobel") end
+    
+    img_angle = atand.(img_sobel_hor, img_sobel_ver)
+    img_angle .*= -1
     img = non_max_suppression(img_sobel, img_angle)
-    imshow(img, name="non max suppression")
-    img = edge_filter!(copy(img), 0.4)
-    imshow(img, name="edge filter")
-    img = imresize(img, size(org_img))
-    imshow(img, name="resize")
+    if debug imshow(img, name="non max suppression") end
 
+    img = edge_filter!(copy(img), 0.1) 
+    if debug imshow(img, name="edge filter") end
+
+    img = imresize(img, size(org_img))
+    if debug imshow(img, name="resize") end
+    
     img = add_images_with_green(org_img, img)
     imshow(img, name="final")
+end
+
+function find_edges_and_save!(img, debug=false)
+    org_img = copy(img)
+    img = to_grey(img)
+    if debug imshow(img, name="grey") end
+    save("1_grey.png", img)
+    save("2_max_pooling.png", max_pooling(img, 2))
+    img = avg_pooling(img, 2)
+    imshow(img, name="avg pooling")
+    save("2_avg_pooling.png", img)
+
+    img = gaussian_blur(img, 1.4, 7)
+    if debug imshow(img, name="gaussian_blur") end
+    save("3_gaussian_blur.png", img)
+    img_sobel_hor = conv_with_matrix(img, hor_sobel)
+    img_sobel_ver = conv_with_matrix(img, ver_sobel)
+ 
+    save("4_sobel_hor.png", (img_sobel_hor .- minimum(img_sobel_hor)) ./ (maximum(img_sobel_hor) - minimum(img_sobel_hor)))
+    save("4_sobel_ver.png", (img_sobel_ver .- minimum(img_sobel_ver)) ./ (maximum(img_sobel_ver) - minimum(img_sobel_ver)))
+    img_sobel = merge_sobels!(copy(img_sobel_hor), copy(img_sobel_ver))
+    if debug imshow(img_sobel, name="full sobel") end
+    save("5_full_sobel.png", (img_sobel .- minimum(img_sobel)) ./ (maximum(img_sobel) - minimum(img_sobel)))
+    
+    img_angle = atand.(img_sobel_hor, img_sobel_ver)
+    img_angle .*= -1
+    save("5_angles.png", (img_angle .- minimum(img_angle)) ./ (maximum(img_angle) - minimum(img_angle)))
+    img = non_max_suppression(img_sobel, img_angle)
+    if debug imshow(img, name="non max suppression") end
+    save("6_non_max_suppression.png", (img .- minimum(img)) ./ (maximum(img) - minimum(img)))
+    img = edge_filter!(copy(img), 0.1) 
+    if debug imshow(img, name="edge filter") end
+    save("7_edge_filter.png", img)
+    img = imresize(img, size(org_img))
+    if debug imshow(img, name="resize") end
+    save("8_rezised_to_org_size.png", img)
+    img = add_images_with_green(org_img, img)
+    imshow(img, name="final")
+    save("9_final_img.png", img)
 end
 
 mewa = load("mewa.png")
 floppa = load("floppa.jpg")
 
-find_edges!(copy(mewa))
+
+find_edges!(copy(floppa), false)
